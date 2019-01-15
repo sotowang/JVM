@@ -1127,6 +1127,173 @@ Minor GC 时发现 Survivor 空间放不下，而老年代的空闲也不够
 另一条，是因为 Survivor Unused 不足，那么可以尝试调大 Survivor 来尝试下 
 ```
 
+#### 堆外内存导致的溢出错误
+
+[堆外内存导致的溢出错误](https://my.oschina.net/xiaowangqiongyou/blog/1790267)
+
+[从0到1起步-跟我进入堆外内存的奇妙世界](https://www.jianshu.com/p/50be08b54bee)
+
+* 堆内内存（on-heap memory）回顾
+
+堆外内存和堆内内存是相对的二个概念，其中堆内内存是我们平常工作中接触比较多的，我们在jvm参数中只要使用-Xms，-Xmx等参数就可以设置堆的大小和最大值，理解jvm的堆还需要知道下面这个公式：
+
+> 堆内内存 = 新生代+老年代+持久代
+
+如下面的图所示：
+
+![](https://upload-images.jianshu.io/upload_images/1049928-b799abaaa261293d.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/634/format/webp)
+
+在使用堆内内存（on-heap memory）的时候，完全遵守JVM虚拟机的内存管理机制，采用垃圾回收器（GC）统一进行内存管理，GC会在某些特定的时间点进行一次彻底回收，也就是Full GC，GC会对所有分配的堆内内存进行扫描，在这个过程中会对JAVA应用程序的性能造成一定影响，还可能会产生Stop The World。
+
+* 堆外内存（off-heap memory）介绍
+
+和堆内内存相对应，堆外内存就是把内存对象分配在Java虚拟机的堆以外的内存，这些内存直接受操作系统管理（而不是虚拟机），这样做的结果就是能够在一定程度上减少垃圾回收对应用程序造成的影响。	
+作为JAVA开发者我们经常用java.nio.DirectByteBuffer对象进行堆外内存的管理和使用，它会在对象创建的时候就分配堆外内存。	
+DirectByteBuffer类是在Java Heap外分配内存，对堆外内存的申请主要是通过成员变量unsafe来操作，下面介绍构造方法
+
+```
+DirectByteBuffer(int cap) {                 
+
+        super(-1, 0, cap, cap);
+        //内存是否按页分配对齐
+        boolean pa = VM.isDirectMemoryPageAligned();
+        //获取每页内存大小
+        int ps = Bits.pageSize();
+        //分配内存的大小，如果是按页对齐方式，需要再加一页内存的容量
+        long size = Math.max(1L, (long)cap + (pa ? ps : 0));
+        //用Bits类保存总分配内存(按页分配)的大小和实际内存的大小
+        Bits.reserveMemory(size, cap);
+
+        long base = 0;
+        try {
+           //在堆外内存的基地址，指定内存大小
+            base = unsafe.allocateMemory(size);
+        } catch (OutOfMemoryError x) {
+            Bits.unreserveMemory(size, cap);
+            throw x;
+        }
+        unsafe.setMemory(base, size, (byte) 0);
+        //计算堆外内存的基地址
+        if (pa && (base % ps != 0)) {
+            // Round up to page boundary
+            address = base + ps - (base & (ps - 1));
+        } else {
+            address = base;
+        }
+        cleaner = Cleaner.create(this, new Deallocator(base, size, cap));
+        att = null;
+    }
+```
+
+注：在Cleaner 内部中通过一个列表，维护了一个针对每一个 directBuffer 的一个回收堆外内存的 线程对象(Runnable)，回收操作是发生在 Cleaner 的 clean() 方法中。
+
+```
+private static class Deallocator implements Runnable  {
+    private static Unsafe unsafe = Unsafe.getUnsafe();
+    private long address;
+    private long size;
+    private int capacity;
+    private Deallocator(long address, long size, int capacity) {
+        assert (address != 0);
+        this.address = address;
+        this.size = size;
+        this.capacity = capacity;
+    }
+ 
+    public void run() {
+        if (address == 0) {
+            // Paranoia
+            return;
+        }
+        unsafe.freeMemory(address);
+        address = 0;
+        Bits.unreserveMemory(size, capacity);
+    }
+}
+```
+
+* 使用堆外内存的优点
+
+1、减少了垃圾回收
+
+```
+因为垃圾回收会暂停其他的工作。
+```
+
+2、加快了复制的速度
+
+```
+堆内在flush到远程时，会先复制到直接内存（非堆内存），然后在发送；而堆外内存相当于省略掉了这个工作。
+同样任何一个事物使用起来有优点就会有缺点，
+堆外内存的缺点就是内存难以控制，使用了堆外内存就间接失去了JVM管理内存的可行性，改由自己来管理，当发生内存溢出时排查起来非常困难。
+```
+
+* 使用DirectByteBuffer的注意事项
+
+java.nio.DirectByteBuffer对象在创建过程中会先通过Unsafe接口直接通过os::malloc来分配内存，然后将内存的起始地址和大小存到java.nio.DirectByteBuffer对象里，这样就可以直接操作这些内存。这些内存只有在DirectByteBuffer回收掉之后才有机会被回收，因此如果这些对象大部分都移到了old，但是一直没有触发CMS GC或者Full GC，那么悲剧将会发生，因为你的物理内存被他们耗尽了，因此为了避免这种悲剧的发生，通过-XX:MaxDirectMemorySize来指定最大的堆外内存大小，当使用达到了阈值的时候将调用System.gc来做一次full gc，以此来回收掉没有被使用的堆外内存。
+
+
+* 现象
+
+```
+发现服务器不定时地会抛出内存溢出异常；
+尝试把堆开到最大（32位系统最多到1.6G），没有任何效果，反而异常频繁；
+加入-XX:+HeapDumpOnOutOfMemoryError，没有任何反应，内存溢出时不会产生dump文件；
+jstat工具监测，GC并不频繁；
+```
+
+查看系统日志如下：
+
+```
+[org.eclipse.jetty.util.log] handle failed java.lang.OutOfMemoryError: null 
+at sun.misc.Unsafe.allocateMemory(Natave Method)
+at java.nio.DirecByteBuffer.<init>(DirectByteBuffer.java:99)
+at java.nio.ByteBuffer.allocateDirect(ByteBuffer.java:288)\
+at org.eclipse.jetty.io.nio.DirectNIOBuffer.<init>
+......
+```
+
+* 分析
+
+此时，看到上面的异常现象后，可以得知异常的原因是因为堆外内存不够引起。	
+32位系统下，给Java堆分配的内存越大，堆外内存越小，因为总量是固定的，最大是2G。
+
+异常关键原因：
+
+```
+垃圾收集时，虚拟机会对Direct Memory进行回收，但是不会主动回收。
+只能等到老年代满了后，发送Full GC时，才会对Direct Memory进行回收，这是一个“顺便清理”的过程。所以，当Direct Memory不够用时，自然会抛出内存溢出异常。
+```
+
+#### 服务器JVM进程崩溃
+
+[JVM笔记 – 自动内存管理机制（调优案例分析与实战）](http://www.itzhai.com/jvm-note-automatic-memory-management-mechanism-4.html)
+
+跨系统集成的时候，使用到异步方式调用Web服务，由于两边服务速度不读等，导致很多Web服务没有调用完成，在等待的线程和Socket连接越来越多，超过JVM的承受范围后JVM进程就崩溃了。
+
+> 可以将异步调用改为生产者/消费者模式的消息队列实现。(加缓冲)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
