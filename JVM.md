@@ -958,4 +958,177 @@ public class JStackTest {
 
 ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117201618365-1578860542.png)
 
+#### 使用 VisualVM 进行性能分析及调优
+[使用 VisualVM 进行性能分析及调优](https://www.ibm.com/developerworks/cn/java/j-lo-visualvm/index.html)
+
+---
+
+### 调优案例分析与实战
+
+#### JVM 调优 —— GC 长时间停顿问题及解决方法
+
+[GC 长时间停顿问题及解决方法](http://www.voidcn.com/article/p-hedvirvq-bac.html)
+
+*  简介
+垃圾收集器长时间停顿，表现在 Web 页面上可能是页面响应码 500 之类的服务器错误问题，如果是个支付过程可能会导致支付失败，将造成公司的直接经济损失，程序员要尽量避免或者说减少此类情况发生。
+
+##### 一.并发模式失败
+
+* 并发模式失败日志
+
+```
+2016-02-21T13:53:07.974+0800: 171467.254: [GC [1 CMS-initial-mark: 1436199K(1560576K)] 1512927K(2504320K), 0.0618140 secs] [Times: user=0.06 sys=0.00, real=0.07 secs]
+2016-02-21T13:53:08.036+0800: 171467.316: [CMS-concurrent-mark-start]
+2016-02-21T13:53:08.377+0800: 171467.657: [CMS-concurrent-mark: 0.340/0.340 secs] [Times: user=2.11 sys=0.15, real=0.34 secs]
+2016-02-21T13:53:08.377+0800: 171467.657: [CMS-concurrent-preclean-start]
+2016-02-21T13:53:08.385+0800: 171467.665: [CMS-concurrent-preclean: 0.008/0.008 secs] [Times: user=0.01 sys=0.00, real=0.01 secs]
+2016-02-21T13:53:08.385+0800: 171467.665: [CMS-concurrent-abortable-preclean-start]
+{Heap before GC invocations=88667 (full 45):
+ par new generation   total 943744K, used 914399K [0x0000000757000000, 0x0000000797000000, 0x0000000797000000)
+  eden space 838912K, 100% used [0x0000000757000000, 0x000000078a340000, 0x000000078a340000)
+  from space 104832K,  72% used [0x000000078a340000, 0x000000078ecf7d98, 0x00000007909a0000)
+  to   space 104832K,   0% used [0x00000007909a0000, 0x00000007909a0000, 0x0000000797000000)
+ concurrent mark-sweep generation total 1560576K, used 1436199K [0x0000000797000000, 0x00000007f6400000, 0x00000007f6400000)
+ concurrent-mark-sweep perm gen total 159744K, used 78413K [0x00000007f6400000, 0x0000000800000000, 0x0000000800000000)
+2016-02-21T13:53:09.535+0800: 171468.815: [GC2016-02-21T13:53:09.535+0800: 171468.815: [ParNew
+Desired survivor size 53673984 bytes, new threshold 6 (max 6)
+- age   1:    7100568 bytes,    7100568 total
+- age   2:    4676456 bytes,   11777024 total
+- age   3:    8773736 bytes,   20550760 total
+- age   4:    7709744 bytes,   28260504 total
+- age   5:   10891960 bytes,   39152464 total
+- age   6:   11735032 bytes,   50887496 total
+: 914399K->75616K(943744K), 0.0414860 secs] 2350599K->1517225K(2504320K), 0.0417710 secs] [Times: user=0.32 sys=0.05, real=0.05 secs]
+Heap after GC invocations=88668 (full 45):
+ par new generation   total 943744K, used 75616K [0x0000000757000000, 0x0000000797000000, 0x0000000797000000)
+  eden space 838912K,   0% used [0x0000000757000000, 0x0000000757000000, 0x000000078a340000)
+  from space 104832K,  72% used [0x00000007909a0000, 0x0000000795378128, 0x0000000797000000)
+  to   space 104832K,   0% used [0x000000078a340000, 0x000000078a340000, 0x00000007909a0000)
+ concurrent mark-sweep generation total 1560576K, used 1441609K [0x0000000797000000, 0x00000007f6400000, 0x00000007f6400000)
+ concurrent-mark-sweep perm gen total 159744K, used 78413K [0x00000007f6400000, 0x0000000800000000, 0x0000000800000000)
+}
+2016-02-21T13:53:10.202+0800: 171469.482: [CMS-concurrent-abortable-preclean: 1.772/1.817 secs] [Times: user=4.94 sys=0.06, real=1.81 secs]
+2016-02-21T13:53:10.204+0800: 171469.483: [GC[YG occupancy: 497152 K (943744 K)]2016-02-21T13:53:10.204+0800: 171469.483: [Rescan (parallel) , 1.3691900 secs]2016-02-21T13:53:11.573+0800: 171470.853: [weak refs processing, 0.1009300 secs]2016-02-21T13:53:11.674+0800: 1714
+70.954: [class unloading, 0.0153470 secs]2016-02-21T13:53:11.689+0800: 171470.969: [scrub symbol table, 0.0110770 secs]2016-02-21T13:53:11.700+0800: 171470.980: [scrub string table, 0.0016360 secs] [1 CMS-remark: 1441609K(1560576K)] 1938761K(2504320K), 1.5079530 secs] [Ti
+mes: user=13.01 sys=0.08, real=1.51 secs]
+2016-02-21T13:53:11.712+0800: 171470.992: [CMS-concurrent-sweep-start]
+{Heap before GC invocations=88668 (full 45):
+ par new generation   total 943744K, used 914528K [0x0000000757000000, 0x0000000797000000, 0x0000000797000000)
+  eden space 838912K, 100% used [0x0000000757000000, 0x000000078a340000, 0x000000078a340000)
+  from space 104832K,  72% used [0x00000007909a0000, 0x0000000795378128, 0x0000000797000000)
+  to   space 104832K,   0% used [0x000000078a340000, 0x000000078a340000, 0x00000007909a0000)
+ concurrent mark-sweep generation total 1560576K, used 1441606K [0x0000000797000000, 0x00000007f6400000, 0x00000007f6400000)
+ concurrent-mark-sweep perm gen total 159744K, used 78413K [0x00000007f6400000, 0x0000000800000000, 0x0000000800000000)
+2016-02-21T13:53:11.775+0800: 171471.055: [GC2016-02-21T13:53:11.775+0800: 171471.055: [ParNew (promotion failed)
+Desired survivor size 53673984 bytes, new threshold 6 (max 6)
+- age   1:    4030872 bytes,    4030872 total
+- age   2:    5959704 bytes,    9990576 total
+- age   3:    4628680 bytes,   14619256 total
+- age   4:    8773080 bytes,   23392336 total
+- age   5:    7707144 bytes,   31099480 total
+- age   6:   10890224 bytes,   41989704 total
+: 914528K->907344K(943744K), 1.0312010 secs]2016-02-21T13:53:12.807+0800: 171472.086: [CMS2016-02-21T13:53:14.455+0800: 171473.735: [CMS-concurrent-sweep: 1.684/2.743 secs] [Times: user=3.69 sys=0.36, real=2.74 secs]
+ (concurrent mode failure): 1451903K->475795K(1560576K), 3.9644230 secs] 2356134K->475795K(2504320K), [CMS Perm : 78413K->78413K(159744K)], 4.9959570 secs] [Times: user=5.65 sys=0.34, real=5.00 secs]
+Heap after GC invocations=88669 (full 46):
+ par new generation   total 943744K, used 0K [0x0000000757000000, 0x0000000797000000, 0x0000000797000000)
+  eden space 838912K,   0% used [0x0000000757000000, 0x0000000757000000, 0x000000078a340000)
+  from space 104832K,   0% used [0x000000078a340000, 0x000000078a340000, 0x00000007909a0000)
+  to   space 104832K,   0% used [0x00000007909a0000, 0x00000007909a0000, 0x0000000797000000)
+ concurrent mark-sweep generation total 1560576K, used 475795K [0x0000000797000000, 0x00000007f6400000, 0x00000007f6400000)
+ concurrent-mark-sweep perm gen total 159744K, used 78413K [0x00000007f6400000, 0x0000000800000000, 0x0000000800000000)
+}
+
+```
+
+
+两个原因：
+
+```
+在 CMS 启动过程中，新生代提升速度过快，老年代收集速度赶不上新生代提升速度
+在 CMS 启动过程中，老年代碎片化严重，无法容纳新生代提升上来的大对象
+```
+
+发送这种情况，应用线程将会全部停止（相当于网站这段时间无法响应用户请求），进行压缩式垃圾收集（回退到 Serial Old 算法）
+
+解决办法：
+
+新生代提升过快问题：
+
+```
+（1）如果频率太快的话，说明空间不足，首先可以尝试调大新生代空间和晋升阈值。
+（2）如果内存有限，可以设置 CMS 垃圾收集在老年代占比达到多少时启动来减少问题发生频率（越早启动问题发生频率越低，但是会降低吞吐量，具体得多调整几次找到平衡点），
+```
+
+参数如下：
+
+```
+如果没有第二个参数，会随着 JVM 动态调节 CMS 启动时间
+-XX:CMSInitiatingOccupancyFraction=68 （默认是 68）
+-XX:+UseCMSInitiatingOccupancyOnly
+```
+
+老年代碎片严重问题：
+
+```
+（1）如果频率太快或者 Full GC 后空间释放不多的话，说明空间不足，首先可以尝试调大老年代空间
+（2）如果内存不足，可以设置进行 n 次 CMS 后进行一次压缩式 Full GC，
+```
+
+参数如下：
+
+```
+-XX:+UseCMSCompactAtFullCollection：允许在 Full GC 时，启用压缩式 GC	
+-XX:CMSFullGCBeforeCompaction=n     在进行 n 次，CMS 后，进行一次压缩的 Full GC，用以减少 CMS 产生的碎片
+```
+
+##### 二.提升失败（promotion failed）
+
+在 Minor GC 过程中， Survivor Unused 可能不足以容纳 Eden 和另一个 Survivor 中的存活对象， 那么多余的将被移到老年代， 称为 过早提升（Premature Promotion）。 这会导致老年代中短期存活对象的增长， 可能会引发严重的性能问题。  再进一步， 如果老年代满了， Minor GC 后会进行 Full GC， 这将导致遍历整个堆， 称为 提升失败（Promotion Failure）。
+
+* 提升失败日志
+
+```
+2016-01-07T18:54:26.948+0800: 18782.967: [GC2016-04-07T18:54:26.948+0800: 18782.967: [ParNew (promotion failed)
+Desired survivor size 117833728 bytes, new threshold 10 (max 10)
+- age   1:    6141680 bytes,    6141680 total
+- age   2:    6337936 bytes,   12479616 total
+- age   3:     549120 bytes,   13028736 total
+- age   4:      87768 bytes,   13116504 total
+- age   5:     221384 bytes,   13337888 total
+- age   6:     934168 bytes,   14272056 total
+- age   7:     146072 bytes,   14418128 total
+- age   8:     626064 bytes,   15044192 total
+- age   9:     398000 bytes,   15442192 total
+- age  10:     429616 bytes,   15871808 total
+: 1969227K->1929200K(2071808K), 0.7452140 secs]2016-01-07T18:54:27.693+0800: 18783.713: [CMS: 1394703K->632845K(2097152K), 4.0993640 secs] 3301676K->632845K(4168960K), [CMS Perm : 77485K->77473K(159744K)], 4.8450240 secs] [Times: user=5.18 sys=0.56, real=4.84 secs]
+Heap after GC invocations=5847 (full 7):
+ par new generation   total 2071808K, used 0K [0x00000006e9c00000, 0x0000000776400000, 0x0000000776400000)
+  eden space 1841664K,   0% used [0x00000006e9c00000, 0x00000006e9c00000, 0x000000075a280000)
+  from space 230144K,   0% used [0x0000000768340000, 0x0000000768340000, 0x0000000776400000)
+  to   space 230144K,   0% used [0x000000075a280000, 0x000000075a280000, 0x0000000768340000)
+ concurrent mark-sweep generation total 2097152K, used 632845K [0x0000000776400000, 0x00000007f6400000, 0x00000007f6400000)
+ concurrent-mark-sweep perm gen total 159744K, used 77473K [0x00000007f6400000, 0x0000000800000000, 0x0000000800000000)
+}
+
+```
+
+提升失败原因：
+Minor GC 时发现 Survivor 空间放不下，而老年代的空闲也不够
+
+```
+新生代提升太快
+老年代碎片太多，放不下大对象提升（表现为老年代还有很多空间但是，出现了 promotion failed）
+```
+
+解决方法：
+
+```
+两条和上面 concurrent mode failure 一样
+另一条，是因为 Survivor Unused 不足，那么可以尝试调大 Survivor 来尝试下 
+```
+
+
+
+
+
 
