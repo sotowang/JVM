@@ -659,12 +659,15 @@ public class Test02 {
 [栈上分配与逃逸分析](https://www.cnblogs.com/shyroke/p/8302934.html)
 
 #### 什么是逃逸？
+
 > 逃逸是指在某个方法之内创建的对象，除了在方法体之内被引用之外，还在方法体之外被其它变量引用到；这样带来的后果是在该方法执行完毕之后，该方法中创建的对象将无法被GC回收，由于其被其它变量引用。正常的方法调用中，方法体中创建的对象将在执行完毕之后，将回收其中创建的对象；故由于无法回收，即成为逃逸。
 
 #### 栈上分配
+
 > 分析找到未逃逸的变量，将变量类的实例化内存直接在栈里分配(无需进入堆)，分配完成后，继续在调用栈内执行，最后线程结束，栈空间被回收，局部变量对象也被回收。
 
 #### 栈上分配与逃逸分析的关系
+
 进行逃逸分析之后，产生的后果是所有的对象都将由栈上分配，而非从JVM内存模型中的堆来分配。
 
 #### 逃逸分析／栈上分配的优劣分析
@@ -692,7 +695,7 @@ public class Test02 {
  
  测试代码
  
- ```
+```
 package org.eds.homework.jvm;  
       
     public class StackOnTest {  
@@ -711,11 +714,11 @@ package org.eds.homework.jvm;
         }  
       
     }
-    ```
+```
     
 进行逃逸分析的设置
 
- ```   
+```   
 设置jvm参数 ：-server -Xmx10m -Xms10m -XX:+DoEscapeAnalysis -XX:+PrintGC 
 ```
 
@@ -777,21 +780,21 @@ public class StackOnTest {
 
  * jstack主要用来查看某个Java进程内的线程堆栈信息。语法格式如下：
  
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117160122021-1223434428.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117160122021-1223434428.png)
  
  * 命令行参数选项说明如下：
  
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117160148959-1153278721.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117160148959-1153278721.png)
  
- #### jstat：类装载、内存、垃圾收集、JIT编译的信息
+#### jstat：类装载、内存、垃圾收集、JIT编译的信息
  
- * 语法格式如下：
+* 语法格式如下：
  
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117161649021-2044620526.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117161649021-2044620526.png)
  
 * vmid是Java虚拟机ID，在Linux/Unix系统上一般就是进程ID。interval是采样时间间隔。count是采样数目。
  
- 结果
+结果
  
  ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117164018537-326737841.png)
  
@@ -809,9 +812,9 @@ public class StackOnTest {
 -flag <name> pid：打印指定JVM的参数值 
 -flag [+|-]<name> pid：设置指定JVM参数的布尔值
 -flag <name>=<value> pid：设置指定JVM参数的值
- ```
+```
  
- ```
+```
  public class JInfoTest {
     private static void s2() {
         String name = ManagementFactory.getRuntimeMXBean().getName();
@@ -836,37 +839,37 @@ public class StackOnTest {
         s2();
     }
 }
- ```
+```
  
 * 设置jvm启动参数，如下：
 
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117165938131-626106865.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117165938131-626106865.png)
  
- *运行程序，此时结果如下:
+* 运行程序，此时结果如下:
  
 ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117170014115-1375799516.png)
  
- * 使用jinfo，修改jvm参数
+* 使用jinfo，修改jvm参数
  
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117170215131-914154505.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117170215131-914154505.png)
  
- 有一点必须注意：PrintGC必须开启，只开启PrintGCDetails、PrintGCTimeStamps不会输出GC，必须PrintGC同时开启
+有一点必须注意：PrintGC必须开启，只开启PrintGCDetails、PrintGCTimeStamps不会输出GC，必须PrintGC同时开启
 
 * 查看控制台，结果如下：
  
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117170301568-489850263.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117170301568-489850263.png)
  
  #### jmap
  
 *  jmap是输出内存中对象的工具，甚至可以将VM 中的heap以二进制输出成文本。可以监控JAVA程序是否有内存泄漏。
  
- 两种使用方法：
+两种使用方法：
  
 ```
 jmap -histo PID在内存使用峰值前后分别dump一次，可以对比出GC回收了哪些对象。
 
 jmap -dump:format=b,file=f1 PID 将该内存heap输出到f1文件里，配合eclipse插件MemoryAnalyzer来使用
- ```
+```
  
  ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117174141740-93812621.png)
  
@@ -933,19 +936,19 @@ public class JStackTest {
 
     }
 }
- ```
+```
  
 * 运行程序，打开jconsole，结果如下图，此时只有main线程，且该线程状态为Runable，main线程阻塞因为正在等待用户输入（sc.next()；）。
  
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117201023990-1065766871.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117201023990-1065766871.png)
  
 * 在console输入一次之后，如下图
  
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117201309162-437429724.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117201309162-437429724.png)
  
 * 再查看jconsole，结果如下，发现多了一个mythread01线程，且该线程也为Runable状态，查看代码发现该线程是死循环所以阻塞。
 
- ![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117201402115-1912822456.png)
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180117201402115-1912822456.png)
  
 * 再在console输入一次，如下图
  
