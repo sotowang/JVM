@@ -1273,11 +1273,326 @@ at org.eclipse.jetty.io.nio.DirectNIOBuffer.<init>
 
 > 可以将异步调用改为生产者/消费者模式的消息队列实现。(加缓冲)
 
+---
+
+### class 文件结构
+
+#### Java体系结构
+
+![](https://images2017.cnblogs.com/blog/1072930/201801/1072930-20180120223301631-1490807525.png)
+
+#### class格式文件概述
+
+* class文件是一种8位字节的二进制流文件， 各个数据项按顺序紧密的从前向后排列， 相邻的项之间没有间隙， 这样可以使得class文件非常紧凑， 体积轻巧， 可以被JVM快速的加载至内存， 并且占据较少的内存空间。 我们的Java源文件， 在被编译之后， 每个类（或者接口）都单独占据一个class文件， 并且类中的所有信息都会在class文件中有相应的描述， 由于class文件很灵活， 它甚至比Java源文件有着更强的描述能力。
+
+* class文件中的信息是一项一项排列的， 每项数据都有它的固定长度， 有的占一个字节， 有的占两个字节， 还有的占四个字节或8个字节， 数据项的不同长度分别用u1, u2, u4, u8表示， 分别表示一种数据项在class文件中占据一个字节， 两个字节， 4个字节和8个字节。 可以把u1, u2, u3, u4看做class文件数据项的“类型” 。
+
+#### Class文件中存储数据的类型：无符号数和表
+
+[深入理解JVM之Java字节码（.class）文件详解](https://windysha.github.io/2018/01/18/%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3JVM%E4%B9%8BJava%E5%AD%97%E8%8A%82%E7%A0%81%EF%BC%88-class%EF%BC%89%E6%96%87%E4%BB%B6%E8%AF%A6%E8%A7%A3/)
+
+* 无符号数（基本数据类型）：
+
+```
+以u1、u2、u4、u8来分别代表1个字节、2个字节、4个字节和8个字节的无符号数，
+无符号数可以用来描述数字、索引引用、数量值或者按照UTF-8编码构成字符串值。
+```
+
+* 表（复合数据类型）：
+
+```
+是由多个无符号数或者其他表作为数据项构成的复合数据类型，
+所有表都习惯性地“_info”结尾。
+表用于描述有层次关系的复合结构的数据。
+表是一个统称，就好比把ArrayList、LinkedList、Set都是称为集合(Collection)，但是每个集合的内部结构都是不同的，
+Class中有很多不同的表。
+如下图中cp_info类型,是表类型，但是它是一个固定结构的类型吗？
+不是，它好比Collection集合下的List集合，只是一类集合的统称，实际上cp_info表是14种具体表类型的统称，constant_pool_count-1指出了有多少个cp_info表，
+那到底是哪些具体的表，就需要具体看了。
+```
+
+一个典型的class文件分为：MagicNumber，Version，Constant_pool，Access_flag，This_class，Super_class，Interfaces，Fields，Methods 和Attributes这十个部分，用一个数据结构可以表示如下：
+
+![](http://static.zybuluo.com/Wind729/firt103iv1wox6jb2mrkpt4r/class_code.PNG)
+
+下面对class文件中的每一项进行详细的解释：
+
+1、magic
+
+```
+在class文件开头的四个字节， 存放着class文件的魔数， 
+这个魔数是class文件的标志，他是一个固定的值： 0XCAFEBABE 。 
+也就是说他是判断一个文件是不是class格式的文件的标准， 
+如果开头四个字节不是0XCAFEBABE， 那么就说明它不是class文件， 不能被JVM识别。
+```
+
+2、minor_version 和 major_version
+
+紧接着魔数的四个字节是class文件的此版本号和主版本号。
+
+```
+随着Java的发展， class文件的格式也会做相应的变动。 
+版本号标志着class文件在什么时候， 加入或改变了哪些特性。 
+举例来说， 不同版本的javac编译器编译的class文件， 版本号可能不同， 而不同版本的JVM能识别的class文件的版本号也可能不同，
+一般情况下， 高版本的JVM能识别低版本的javac编译器编译的class文件， 
+而低版本的JVM不能识别高版本的javac编译器编译的class文件。 
+如果使用低版本的JVM执行高版本的class文件， JVM会抛出java.lang.UnsupportedClassVersionError 。
+具体的版本号变迁这里不再讨论， 需要的读者自行查阅资料。
+```
+
+3、constant_pool
+
+在class文件中， 位于版本号后面的就是常量池相关的数据项。 
+
+```
+常量池是class文件中的一项非常重要的数据。 
+常量池中存放了文字字符串， 常量值， 当前类的类名， 字段名， 方法名， 各个字段和方法的描述符， 对当前类的字段和方法的引用信息， 当前类中对其他类的引用信息等等。 
+常量池中几乎包含类中的所有信息的描述，
+class文件中的很多其他部分都是对常量池中的数据项的引用，
+比如后面要讲到的this_class, super_class, field_info, attribute_info等， 
+另外字节码指令中也存在对常量池的引用， 这个对常量池的引用当做字节码指令的一个操作数。
+此外，常量池中各个项也会相互引用。
+```
+
+class文件中的项constant_pool_count的值为1, 说明每个类都只有一个常量池。 常量池中的数据也是一项一项的， 没有间隙的依次排放。常量池中各个数据项通过索引来访问， 有点类似与数组， 只不过常量池中的第一项的索引为1, 而不为0, 如果class文件中的其他地方引用了索引为0的常量池项， 就说明它不引用任何常量池项。
+class文件中的每一种数据项都有自己的类型， 相同的道理，常量池中的每一种数据项也有自己的类型。 
+常量池中的数据项的类型如下表：
+
+![](http://static.zybuluo.com/Wind729/y0rw90a07nqpi1koeisr29bb/constant_pool.PNG)
+
+每个数据项叫做一个XXX_info项，比如，一个常量池中一个CONSTANT_Utf8类型的项，就是一个CONSTANT_Utf8_info 。除此之外， 每个info项中都有一个标志值（tag），这个标志值表明了这个常量池中的info项的类型是什么， 从上面的表格中可以看出，一个CONSTANT_Utf8_info中的tag值为1，而一个CONSTANT_Fieldref_info中的tag值为9 。
+
+4、access_flag 保存了当前类的访问权限
+
+5、this_cass 保存了当前类的全局限定名在常量池里的索引
+
+6、super class 保存了当前类的父类的全局限定名在常量池里的索引
+
+7、interfaces 保存了当前类实现的接口列表，包含两部分内容：
+
+```
+interfaces_count 和interfaces[interfaces_count]
+interfaces_count 指的是当前类实现的接口数目
+interfaces[] 是包含interfaces_count个接口的全局限定名的索引的数组
+```
+
+8、fields 保存了当前类的成员列表，包含两部分的内容：
+
+```
+fields_count 和 fields[fields_count]
+fields_count是类变量和实例变量的字段的数量总和。
+fileds[]是包含字段详细信息的列表。
+```
+
+9、methods 保存了当前类的方法列表，包含两部分的内容：
+
+```
+methods_count和methods[methods_count]
+methods_count是该类或者接口显示定义的方法的数量。
+method[]是包含方法信息的一个详细列表。
+```
+
+10、attributes 包含了当前类的attributes列表，包含两部分内容：
+
+```
+attributes_count 和 attributes[attributes_count]
+```
+
+>class文件的最后一部分是属性，它描述了该类或者接口所定义的一些属性信息。attributes_count指的是attributes列表中包含的attribute_info的数量。
+属性可以出现在class文件的很多地方，而不只是出现在attributes列表里。如果是attributes表里的属性，那么它就是对整个class文件所对应的类或者接口的描述；如果出现在fileds的某一项里，那么它就是对该字段额外信息的描述；如果出现在methods的某一项里，那么它就是对该方法额外信息的描述。
+
+#### 通过示例代码来手动分析class文件
+
+我们在这里新建一个java文件，Hello.java，具体内容如下：
+
+```
+public class Hello{
+  private int test;
+  public int test(){
+        return test;
+    }
+}
+```
+
+然后再通过javac命令将此java文件编译成class文件：
+
+```
+javac /d/class_file_test/Hello.java
+```
+
+编译之后的class文件十六进制结果如下所示，可以用UltraEdit等十六进制编辑器打开，得到：
+
+![](http://static.zybuluo.com/Wind729/xxy7sc8k65wd060vl7h47hnh/hello_class_test.PNG)
+
+接下来我们就按照class文件的格式来分析上面的一串数字，还是按照之前的顺序来：
+* magic:
+
+CA FE BA BE ，代表该文件是一个字节码文件，我们平时区分文件类型都是通过后缀名来区分的，不过后缀名是可以随便修改的，所以仅靠后缀名不能真正区分一个文件的类型。区分文件类型的另个办法就是magic数字，JVM 就是通过 CA FE BA BE 来判断该文件是不是class文件
+
+* version字段：
+
+00 00 00 34，前两个字节00是minor_version，后两个字节0034是major_version字段，对应的十进制值为52，也就是说当前class文件的主版本号为52，次版本号为0。下表是jdk 1.6 以后对应支持的 Class 文件版本号：
+
+![](http://static.zybuluo.com/Wind729/pwtmpc9fws585t7h2dtdb0ml/image_1c2th3nii1otd13vg1vhg1hl6itg4i.png)
+
+* 常量池，constant_pool:
+
+3.1. constant_pool_count
+
+紧接着version字段下来的两个字节是：00 12代表常量池里包含的常量数目，因为字节码的常量池是从1开始计数的，这个常量池包含17个（0x0012-1）常量。
 
 
+3.2.constant_pool
 
+接下来就是分析这17个常量:
 
+3.2.1. 第一个变量 0A 00 04 00 0E	
+首先，紧接着constant_pool_count的第一个字节0a（tag=10）
 
+![](http://static.zybuluo.com/Wind729/0lt2xeea9935vhps75yokr9d/image_1c2tj6ib6pslkbb1876ot81rjj4v.png)
+
+可知，这表示的是一个CONSTANT_Methodref。CONSTANT_Methodref的结构如下：
+
+```
+CONSTANT_Methodref_info {
+          u1 tag;    //u1表示占一个字节
+          u2 class_index;    //u2表示占两个字节
+          u2 name_and_type_index;    //u2表示占两个字节
+}
+```
+
+其中class_index表示该方法所属的类在常量池里的索引，name_and_type_index表示该方法的名称和类型的索引。	
+常量池里的变量的索引从1开始。
+
+那么这个methodref结构的数据如下：
+
+```
+0a  //tag  10表示这是一个CONSTANT_Methodref_info结构
+00 04 //class_index 指向常量池中第4个常量所表示的类
+00 0e  //name_and_type_index 指向常量池中第14个常量所表示的方法
+```
+
+3.2.2. 第二个变量09 00 03 00 0F		
+接着是第二个常量，它的tag是09，根据上面的表格可知，这表示的是一个CONSTANT_Fieldref的结构，它的结构如下：
+
+```
+CONSTANT_Fieldref_info {
+      u1 tag;
+      u2 class_index;
+      u2 name_and_type_index;
+}
+```
+
+和上面的变量基本一致。
+
+```
+09 //tag
+00 03 //指向常量池中第3个常量所表示的类
+00 0f //指向常量池中第15个常量所表示的变量
+```
+
+3.2.3. 第三个变量 07 00 10	
+
+tag为07表示是一个CONSTANT_Class变量，这个变量的结构如下：
+
+```
+CONSTANT_Class_info {
+          u1 tag;
+          u2 name_index;
+}
+```
+
+除了tag字段以外，还有一个name_index的值为00 10，即是指向常量池中第16个常量所表示的Class名称。
+
+3.2.4. 第四个变量07 00 11	
+同上，也是一个CONSTANT_Class变量，不过，指向的是第17个常量所表示的Class名称。
+
+3.2.5. 第五个变量 01 00 04 74 65 73 74	
+tag为1，表示这是一个CONSTANT_Utf8结构，这种结构用UTF-8的一种变体来表示字符串，结构如下所示：
+
+```
+CONSTANT_Utf8_info {
+               u1 tag;
+               u2 length;
+               u1 bytes[length];
+}
+```
+
+其中length表示该字符串的字节数，bytes字段包含该字符串的二进制表示。
+
+```
+01 //tag  1表示这是一个CONSTANT_Utf8结构
+00 04 //表示这个字符串的长度是4字节,也就是后面的四个字节74 65 73 74
+74 65 73 74 //通过ASCII码表转换后，表示的是字符串“test”
+```
+
+接下来的8个变量都是字符串，这里就不具体分析了。
+
+3.2.6. 第十四个常量 0c 00 07 00 08	
+tag为0c，表示这是一个CONSTANT_NameAndType结构，这个结构用来描述一个方法或者成员变量。具体结构如下：
+
+```
+CONSTANT_NameAndType_info {
+          u1 tag;
+          u2 name_index;
+          u2 descriptor_index;
+}
+```
+
+name_index表示的是该变量或者方法的名称，这里的值是0007，表示指向第7个常量，即是<init>。
+
+descriptor_index指向该方法的描述符的引用，这里的值是0008，表示指向第8个常量，即是()V，由前面描述符的语法可知，这个方法是一个无参的，返回值为void的方法。
+
+综合两个字段，可以推出这个方法是void <init>()。也即是指向这个NameAndType结构的Methodref的方法名为void <init>()，也就是说第一个常量表示的是void <init>()方法，这个方法其实就是此类的默认构造方法。
+
+3.2.7. 第十五个常量也是一个CONSTANT_NameAndType，表示的方法名为“int test()”，第2个常量引用了这个NameAndType，所以第二个常量表示的是“int test()”方法。
+
+3.2.8. 第16和17个常量也是字符串，可以按照前面的方法分析。
+
+3.3. 完整的常量池
+
+最后，通过以上分析，完整的常量池如下：	
+	
+```
+00 12  常量池的数目 18-1=17
+0a 00 04 00 0e  方法：java.lang.Ojbect void <init>()
+09 00 03 00 0f   方法 ：Hello int test() 
+07 00 10  字符串：Hello
+07 00 11 字符串：java.lang.Ojbect
+01 00 04 74 65 73 74 字符串：test
+01 00 01 49  字符串：I
+01 00 06 3c 69 6e 69 74 3e 字符串：<init>
+01 00 03 28 29 56 字符串：()V
+01 00 04 43 6f 64 65 字符串：Code 
+01 00 0f 4c 69 6e 65 4e 75 6d 62 65 72 54 61 62 6c 65 字符串：LineNumberTable 
+01 00 03 28 29 49 字符串：()I
+01 00 0a 53 6f 75 72 63 65 46 69 6c 65 字符串：SourceFile
+01 00 0a 48 65 6c 6c 6f 2e 6a 61 76 61 字符串：Hello.java
+0c 00 07 00 08 NameAndType：<init> ()V
+0c 00 05 00 06 NameAndType：test I
+01 00 05 48 65 6c 6c 6f 字符串：Hello
+01 00 10 6a 61 76 61 2f 6c 61 6e 67 2f 4f 62 6a 65 63 74 字符串： java/lang/Object
+```
+
+通过这样分析其实非常的累，我们只是为了了解class文件的原理才来一步一步分析每一个二进制字节码。JDK提供了现成的工具可以直接解析此二进制文件，即javap工具(在JDK的bin目录下)，我们通过javap命令来解析此class文件：
+
+```
+javap -v -p -s -sysinfo -constants /d/class_file_test/Hello.class
+```
+
+解析得到的结果为：
+
+![](http://static.zybuluo.com/Wind729/y3px0bt1fj1qclzo80apjhbb/class_file_2.PNG)
+
+---
+
+### java类的加载机制
+
+[java类的加载机制](https://mp.weixin.qq.com/s?__biz=MzI4NDY5Mjc1Mg==&mid=2247483934&idx=1&sn=41c46eceb2add54b7cde9eeb01412a90&chksm=ebf6da61dc81537721d36aadb5d20613b0449762842f9128753e716ce5fefe2b659d8654c4e8&scene=21#wechat_redirect)
+
+#### 什么是类的加载
+
+类的加载指的是将类的.class文件中的二进制数据读入到内存中，将其放在运行时数据区的方法区内，然后在堆区创建一个 java.lang.Class对象，用来封装类在方法区内的数据结构。类的加载的最终产品是位于堆区中的 Class对象， Class对象封装了类在方法区内的数据结构，并且向Java程序员提供了访问方法区内的数据结构的接口。
 
 
 
