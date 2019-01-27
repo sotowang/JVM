@@ -286,6 +286,7 @@ class methodClass {
 ```
 
 ### 利用反射创建数组
+
 数组在Java里是比较特殊的一种类型，它可以赋值给一个Object Reference。下面我们看一看利用反射创建数组的例子：
 
 ```
@@ -301,9 +302,9 @@ public static void testArray() throws ClassNotFoundException {
         //获取某一项的内容
         System.out.println(Array.get(array,3));
     }
-    ```
+```
     
-    其中的Array类为java.lang.reflect.Array类。我们通过Array.newInstance()创建数组对象，它的原型是:
+其中的Array类为java.lang.reflect.Array类。我们通过Array.newInstance()创建数组对象，它的原型是:
     
  ```
  public static Object newInstance(Class<?> componentType, int length)
@@ -320,6 +321,7 @@ private static native Object newArray(Class<?> componentType, int length)
 ```    
 
 源码目录：
+
 > openjdk\hotspot\src\share\vm\runtime\reflection.cpp
     
 ```
